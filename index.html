@@ -45,7 +45,7 @@
   function inject(src, onload, onerror) {
     var s = document.createElement('script');
     s.src = src;
-    s.async = false;                 // đảm bảo chạy theo thứ tự
+    s.async = false;              // chạy tuần tự, tránh race
     s.onload = onload;
     s.onerror = onerror || function(){};
     document.head.appendChild(s);
@@ -53,22 +53,23 @@
   function setReady(workerBase) {
     var lib = window.pdfjsLib || window['pdfjsLib'];
     if (!lib) return false;
-    window.pdfjsLib = lib;
+    window.pdfjsLib = lib; // chuẩn hoá về window.pdfjsLib
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerBase + 'pdf.worker.min.js';
     console.log('pdf.js ready from', workerBase);
     return true;
   }
-  // 1) cdnjs
+
+  // 1) cdnjs (primary)
   inject(
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/legacy/build/pdf.min.js',
     function () {
       if (!setReady('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/legacy/build/')) {
-        // 2) unpkg
+        // 2) unpkg (fallback #1)
         inject(
           'https://unpkg.com/pdfjs-dist@4.2.67/legacy/build/pdf.min.js',
           function () {
             if (!setReady('https://unpkg.com/pdfjs-dist@4.2.67/legacy/build/')) {
-              // 3) jsDelivr
+              // 3) jsDelivr (fallback #2)
               inject(
                 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/legacy/build/pdf.min.js',
                 function () {
@@ -84,8 +85,9 @@
 })();
 </script>
 
+<!-- jsPDF -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
