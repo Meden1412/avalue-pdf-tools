@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Avalue PDF Tools (Client-only)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --primary:#b91c1c; --primary-2:#991b1b; --accent:#ef4444;
+      --dark:#111827; --border:#e5e7eb; --surface:#fff; --bg:#f7f7f8;
+    }
+    *{box-sizing:border-box} body{font:15px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--dark);margin:0}
+    .container{max-width:980px;margin:0 auto;padding:24px}
+    header{display:flex;align-items:center;gap:12px;padding:8px 0}
+    header h1{font-size:20px;margin:0;color:var(--primary)}
+    .hero{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
+    .title{font-size:28px;margin:0 0 6px}
+    .subtitle{color:#6b7280;margin:0 0 18px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{padding:12px 16px;border-radius:12px;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block}
+    .btn:hover{background:var(--primary-2);border-color:var(--primary-2)}
+    .btn.secondary{background:#fff;color:var(--primary)}
+    .btn:disabled{opacity:0.6;cursor:not-allowed}
+    input[type="file"]{padding:10px;border:1px dashed var(--border);border-radius:12px;background:#fff}
+    input[type="text"],input[type="number"]{padding:10px;border:1px solid var(--border);border-radius:10px;min-width:180px}
+    .drop{border:2px dashed var(--primary);background:#fff;border-radius:16px;padding:18px;text-align:center;color:#475569}
+    .drop.drag{background:#eef5ff;border-color:var(--accent)}
+    ul#fileList{list-style:none;padding:0;margin:10px 0}
+    ul#fileList li{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px dashed var(--border);background:#fafafa;border-radius:10px;padding:8px;margin-bottom:6px}
+    .dragHandle{cursor:grab;color:#64748b}
+    progress{width:240px;height:12px}
+    a.link{color:var(--primary);font-weight:600}
+    footer{opacity:.7;text-align:center;margin:18px 0}
+    .error{color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:8px;border-radius:8px;margin:8px 0}
+    .success{color:#059669;background:#f0fdf4;border:1px solid #bbf7d0;padding:8px;border-radius:8px;margin:8px 0}
+    .debug{background:#f3f4f6;border:1px solid #d1d5db;padding:8px;border-radius:8px;margin:8px 0;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  </style>
+
+  <!-- Libs: pdf-lib (merge), pdf.js (render), jsPDF (write) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+
+  <!-- pdf.js: legacy build (ổn định với <script>) -->
+  <script defer src="https://unpkg.com/pdfjs-dist@4.2.67/legacy/build/pdf.min.js"></script>
+  <script>
+    // set worker ngay sau khi legacy build được load
+    document.addEventListener('DOMContentLoaded', function(){
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://unpkg.com/pdfjs-dist@4.2.67/legacy/build/pdf.worker.min.js';
+        // alias để gọi pdfjsLib ở scope global
+        try { window.pdfjsLib && (window.pdfjsLibAlias = window.pdfjsLib); } catch(e){}
+      }
+    });
+  </script>
+
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div style="width:36px;height:36px;background:var(--primary);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;">A</div>
+      <h1>Avalue PDF Tools</h1>
+    </header>
+
+    <section class="hero" style="margin-bottom:16px">
+      <h2 class="title">Kéo & thả PDF để gộp hoặc nén</h2>
+      <p class="subtitle">Chạy hoàn toàn trên trình duyệt. Không tải file lên server.</p>
+
+      <div id="dropzone" class="drop">
+        <strong>Kéo & thả PDF vào đây</strong>
+        hoặc <label class="btn secondary" for="mergeFiles">Chọn tệp…</label>
+        <input hidden type="file" id="mergeFiles" accept="application/pdf" multiple>
+      </div>
+      <small>Tip: sắp xếp lại thứ tự phía dưới trước khi Merge.</small>
+      <ul id="fileList"></ul>
+
+      <div class="row">
+        <button class="btn" id="btnMerge">Merge PDFs</button>
+      </div>
+      <div id="mergeResult" style="margin-top:8px"></div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h3 style="margin:0 0 8px">Compress PDF (client-side)</h3>
+        <div class="row">
+          <input type="file" id="compressFile" accept="application/pdf">
+          <label>DPI <input type="number" id="dpi" value="150" min="72" max="300" step="1"></label>
+          <label>JPEG <input type="number" id="jpegQ" value="0.75" min="0.1" max="1" step="0.05"></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="compressBtn">Compress</button>
+          <progress id="prog" value="0" max="100" hidden></progress>
+          <span id="progText"></span>
+        </div>
+        <small>Gợi ý: 144–200 DPI, JPEG 0.6–0.8. Lưu ý: trang vector sẽ chuyển thành ảnh.</small>
+        <div id="compressResult" style="margin-top:8px"></div>
+        <div id="debugInfo" class="debug" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px">Ghi chú</h3>
+        <ul style="margin:0 0 4px 18px">
+          <li>Merge giữ nguyên chất lượng (vector, text).</li>
+          <li>Compress giảm dung lượng mạnh (phù hợp scan) bằng cách render thành ảnh JPEG.</li>
+          <li>Chạy hoàn toàn tại trình duyệt → miễn phí & riêng tư.</li>
+        </ul>
+        <button class="btn secondary" id="chkLib">Kiểm tra thư viện</button>
+      </div>
+    </section>
+
+    <footer>© Avalue – PDF Utilities</footer>
+  </div>
+
+<script>
+  // ======= Helpers UI =======
+  const list = document.getElementById('fileList');
+  const mergeInput = document.getElementById('mergeFiles');
+  const drop = document.getElementById('dropzone');
+
+  function showError(id, msg){ document.getElementById(id).innerHTML = `<div class="error">❌ ${msg}</div>`; }
+  function showSuccess(id, msg){ document.getElementById(id).innerHTML = `<div class="success">✅ ${msg}</div>`; }
+
+  function renderList(files){
+    list.innerHTML = '';
+    files.forEach((f, idx) => {
+      const li = document.createElement('li');
+      li.draggable = true;
+      li.dataset.index = idx;
+      li.innerHTML = `<span class="dragHandle">⇅</span><span>${f.name}</span><small>${(f.size/1024/1024).toFixed(2)} MB</small>`;
+      list.appendChild(li);
+    });
+    makeSortable(list);
+  }
+
+  function makeSortable(container){
+    let dragEl=null;
+    [...container.children].forEach(li=>{
+      li.addEventListener('dragstart',()=>dragEl=li);
+      li.addEventListener('dragover',(e)=>e.preventDefault());
+      li.addEventListener('drop',(e)=>{
+        e.preventDefault();
+        if(!dragEl||dragEl===li) return;
+        const items=[...container.children];
+        const a=items.indexOf(dragEl), b=items.indexOf(li);
+        if(a<b) container.insertBefore(dragEl, li.nextSibling); else container.insertBefore(dragEl, li);
+      });
+    });
+  }
+
+  function currentFilesOrdered(){
+    const files = [...mergeInput.files];
+    return [...list.children].map(li => files[parseInt(li.dataset.index,10)]);
+  }
+
+  mergeInput.addEventListener('change',()=>{ if(!mergeInput.files.length) return; renderList([...mergeInput.files]); });
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove('drag'); }));
+  drop.addEventListener('drop', e=>{
+    const dt = e.dataTransfer;
+    const files = [...dt.files].filter(f => f.type==='application/pdf');
+    if(files.length){
+      const dtx = new DataTransfer(); files.forEach(f => dtx.items.add(f));
+      mergeInput.files = dtx.files; renderList(files);
+    }
+  });
+
+  // ======= Merge PDFs (pdf-lib) =======
+  document.getElementById('btnMerge').onclick = async () => {
+    try {
+      if (typeof PDFLib === 'undefined') return showError('mergeResult','pdf-lib chưa sẵn sàng.');
+      const ordered = currentFilesOrdered();
+      if (ordered.length < 2) return showError('mergeResult','Chọn ít nhất 2 file PDF để merge');
+
+      document.getElementById('mergeResult').innerHTML = '<div>Đang xử lý...</div>';
+      const { PDFDocument } = PDFLib;
+      const out = await PDFDocument.create();
+
+      for(const f of ordered){
+        const bytes = await f.arrayBuffer();
+        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await out.copyPages(src, src.getPageIndices());
+        pages.forEach(p => out.addPage(p));
+      }
+
+      const outBytes = await out.save({ useObjectStreams:true });
+      const blob = new Blob([outBytes], { type:'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      showSuccess('mergeResult', `Xong: <a class="link" href="${url}" download="merged.pdf">Tải merged.pdf</a> · ${(blob.size/1024/1024).toFixed(2)} MB`);
+    } catch (e) {
+      showError('mergeResult', 'Lỗi merge PDF: '+e.message);
+    }
+  };
+
+  // ======= Compress (pdf.js + jsPDF) =======
+  document.getElementById('compressBtn').onclick = async () => {
+    const prog = document.getElementById('prog');
+    const progText = document.getElementById('progText');
+    function resetUI(err){ document.getElementById('compressBtn').disabled=false; prog.hidden=true; progText.textContent=''; if(err) showError('compressResult', err); }
+
+    try{
+      if (!window.pdfjsLib) throw new Error('pdf.js chưa sẵn sàng.');
+      if (!window.jspdf) throw new Error('jsPDF chưa sẵn sàng.');
+
+      const file = document.getElementById('compressFile').files[0];
+      if(!file) throw new Error('Vui lòng chọn 1 file PDF để nén.');
+      const dpi = parseInt(document.getElementById('dpi').value||'150',10);
+      const jpegQ = parseFloat(document.getElementById('jpegQ').value||'0.75');
+
+      document.getElementById('compressBtn').disabled = true;
+      prog.hidden=false; prog.value=0; progText.textContent='Đang tải PDF...';
+      document.getElementById('compressResult').innerHTML = '';
+
+      const bytes = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: bytes, verbosity: 0 }).promise;
+      progText.textContent = `Tìm thấy ${pdf.numPages} trang. Đang xử lý...`;
+
+      const { jsPDF } = window.jspdf;
+      let doc;
+
+      for(let i=1;i<=pdf.numPages;i++){
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: dpi/72 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const img = canvas.toDataURL('image/jpeg', jpegQ);
+        const orient = viewport.width > viewport.height ? 'l' : 'p';
+        const w = viewport.width, h = viewport.height;
+        if(!doc){ doc = new jsPDF({ orientation: orient, unit: 'pt', format: [w, h], compress: true }); }
+        else{ doc.addPage([w, h], orient); }
+        doc.addImage(img, 'JPEG', 0, 0, w, h, undefined, 'FAST');
+
+        prog.value = Math.round(i / pdf.numPages * 100);
+        progText.textContent = `Trang ${i}/${pdf.numPages}`;
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      if(!doc) throw new Error('Không thể xử lý trang nào.');
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const name = file.name.replace(/\.pdf$/i,'') + `_compressed.pdf`;
+      showSuccess('compressResult', `Xong: <a class="link" href="${url}" download="${name}">Tải ${name}</a> · ${(blob.size/1024/1024).toFixed(2)} MB`);
+      progText.textContent = 'Hoàn tất';
+      setTimeout(()=>resetUI(),1200);
+    }catch(e){ resetUI(e.message); }
+  };
+
+  // ======= Check libs =======
+  document.getElementById('chkLib').onclick = ()=>{
+    const div = document.getElementById('debugInfo');
+    div.style.display='block';
+    div.textContent =
+      `pdf-lib: ${typeof PDFLib}\n`+
+      `pdf.js: ${typeof window.pdfjsLib}\n`+
+      `jsPDF: ${typeof window.jspdf}`;
+  };
+</script>
+</body>
+</html>
