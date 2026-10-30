@@ -12,6 +12,10 @@ Bộ công cụ PDF tiếng Việt chạy trên GitHub Pages, xử lý nội dun
 
 Chọn hoặc kéo thả tối đa 20 tệp, 50 MB/tệp, tổng 200 MB. Các tệp hiển thị dạng thẻ nằm ngang, có ảnh xem trước (trang đầu đối với PDF), số thứ tự và nút bỏ tệp. Kéo trái/phải hoặc dùng nút ← → để sắp xếp; nút hai bên cuộn hàng thẻ. Trên điện thoại, vuốt để cuộn, kéo tay nắm ⠿ để sắp xếp. Tay nắm cũng hỗ trợ phím mũi tên trái/phải. Khoảng trang như `1-3,5` áp dụng cho từng PDF. Tệp có mật khẩu phải được mở khóa trước. Nút dừng có hiệu lực sau thao tác đang thực hiện; kết quả đã tạo vẫn tải được.
 
+## Tên tệp đầu ra
+
+Nhập tên trước khi chuyển đổi; có thể để trống để giữ cách đặt tên mặc định. Công cụ tự thêm đúng đuôi PDF/JPG/DOCX và giữ tiếng Việt. Khi xuất nhiều tệp, tên chung được thêm số thứ tự `-001`, `-002`…; ZIP dùng tên chung. Ký tự không hợp lệ trên Windows được thay thế. Tên được chốt khi bắt đầu tạo tệp; thay đổi ô nhập sau đó chỉ áp dụng cho lần tạo tiếp theo.
+
 ## Giới hạn Word và nén
 
 Word văn bản giữ chữ và ngắt trang, không tái dựng chính xác bảng, nhiều cột, phông và hình ảnh. Trang không có lớp chữ được đánh dấu để người dùng chuyển sang OCR. OCR phụ thuộc chất lượng bản scan; cần kiểm tra lại dấu, số và bố cục. Word chế độ ảnh chứa ảnh, chữ không chỉnh sửa được. Nén PDF làm mất lớp văn bản, vector, biểu mẫu và liên kết.

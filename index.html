@@ -8,7 +8,7 @@
       content="Gộp, nén PDF, JPG sang PDF, PDF sang JPG và Word. Xử lý ngay trên thiết bị của bạn."
     />
     <title>Avalue PDF Tools</title>
-    <link rel="stylesheet" href="styles.css?v=carousel-1" />
+    <link rel="stylesheet" href="styles.css?v=output-name-1" />
     <script
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
@@ -17,7 +17,7 @@
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
     ></script>
-    <script type="module" src="app.js?v=carousel-1"></script>
+    <script type="module" src="app.js?v=output-name-1"></script>
   </head>
   <body>
     <div class="container">
@@ -91,6 +91,18 @@
         ></span>
         <div class="options" id="options"></div>
         <p class="note" id="note"></p>
+        <div class="output-name">
+          <label for="outputName">Tên tệp đầu ra <span>(tùy chọn)</span></label>
+          <input
+            id="outputName"
+            type="text"
+            maxlength="100"
+            placeholder="Ví dụ: Ho-so-tham-dinh"
+            aria-describedby="outputNameHint"
+            autocomplete="off"
+          />
+          <p id="outputNameHint"></p>
+        </div>
         <div class="actions">
           <button class="btn" id="convert">Chuyển đổi</button
           ><button class="btn secondary" id="cancel" hidden>Dừng xử lý</button

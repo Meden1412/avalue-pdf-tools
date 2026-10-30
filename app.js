@@ -61,6 +61,7 @@ function status(text, kind = "") {
   $("status").className = kind;
 }
 function clearResults() {
+  resultNaming = null;
   urls.forEach(URL.revokeObjectURL);
   urls = [];
   outputs = [];
@@ -75,6 +76,13 @@ function link(blob, name) {
   return a;
 }
 function result(blob, name, preview = false) {
+  if (resultNaming) {
+    const extension = name.slice(name.lastIndexOf("."));
+    const suffix = resultNaming.multiple
+      ? `-${String(outputs.length + 1).padStart(3, "0")}`
+      : "";
+    name = resultNaming.base + suffix + extension;
+  }
   outputs.push({ blob, name });
   const row = document.createElement("div");
   row.className = "result";
@@ -92,6 +100,9 @@ function result(blob, name, preview = false) {
 }
 async function zipResults() {
   if (outputs.length < 2) return;
+  const zipName = resultNaming
+    ? resultNaming.base + ".zip"
+    : "avalue-results.zip";
   const button = document.createElement("button");
   button.className = "btn secondary zip";
   button.textContent = "Tải tất cả (ZIP)";
@@ -101,7 +112,7 @@ async function zipResults() {
       const zip = new JSZip();
       outputs.forEach((o) => zip.file(o.name, o.blob));
       const blob = await zip.generateAsync({ type: "blob" });
-      const a = link(blob, "avalue-results.zip");
+      const a = link(blob, zipName);
       a.textContent = "Tải ZIP";
       button.replaceWith(a);
     } catch (e) {
@@ -199,7 +210,42 @@ function selectTool(key) {
           ? "Mỗi trang thành một ảnh. Có thể chọn khoảng trang; áp dụng cho từng tệp trong danh sách."
           : "Kéo các thẻ sang trái/phải hoặc dùng nút ← → để sắp xếp. Tệp mới sẽ được thêm vào cuối danh sách.";
   renderQueue();
+  updateNameHint();
 }
+let resultNaming = null;
+function cleanOutputName(value) {
+  let name = value
+    .normalize("NFC")
+    .trim()
+    .replace(/\.(pdf|jpe?g|docx|zip)$/i, "")
+    .replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, "_")
+    .replace(/^\.+|[. ]+$/g, "")
+    .trim();
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name))
+    name = "_" + name;
+  return name;
+}
+function multipleOutputNames() {
+  return (
+    tool === "jpg" ||
+    ((tool === "word" ||
+      tool === "compress" ||
+      (tool === "images" && $("separate")?.value === "separate")) &&
+      files.length > 1)
+  );
+}
+function updateNameHint() {
+  const extension =
+    tool === "jpg" ? ".jpg" : tool === "word" ? ".docx" : ".pdf";
+  const name = cleanOutputName($("outputName").value);
+  $("outputNameHint").textContent = name
+    ? `Tên kết quả: ${name}${multipleOutputNames() ? "-001" : ""}${extension}${multipleOutputNames() ? ", …" : ""}. Đuôi tệp được thêm tự động.`
+    : "Không cần nhập đuôi tệp. Để trống để dùng tên mặc định; nhiều tệp sẽ được đánh số thứ tự.";
+}
+$("outputName").addEventListener("input", updateNameHint);
+document.addEventListener("change", (e) => {
+  if (e.target.id === "separate") updateNameHint();
+});
 for (const [key, cfg] of Object.entries(TOOLS)) {
   const b = document.createElement("button");
   b.type = "button";
@@ -327,6 +373,7 @@ function reorderFile(file, targetFile) {
     `${file.name}: vị trí ${to + 1} trên ${files.length}.`;
 }
 function renderQueue() {
+  updateNameHint();
   const list = $("fileList"),
     scrollLeft = list.scrollLeft;
   list.replaceChildren();
@@ -914,6 +961,13 @@ $("convert").onclick = async () => {
       dpi: $("dpi") ? numberValue("dpi", 72, 300) : 150,
       quality: $("quality") ? numberValue("quality", 0.1, 1) : 0.8,
     };
+    const requestedName = $("outputName").value.trim();
+    const cleanName = cleanOutputName(requestedName);
+    if (requestedName && !cleanName)
+      throw new Error("Vui lòng nhập tên tệp có ít nhất một chữ hoặc số.");
+    resultNaming = cleanName
+      ? { base: cleanName, multiple: multipleOutputNames() }
+      : null;
     setBusy(true);
     status("Đang chuẩn bị…");
     if (tool === "merge" || tool === "images") {
