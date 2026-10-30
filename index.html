@@ -8,7 +8,7 @@
       content="Gộp, nén PDF, JPG sang PDF, PDF sang JPG và Word. Xử lý ngay trên thiết bị của bạn."
     />
     <title>Avalue PDF Tools</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=carousel-1" />
     <script
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
@@ -17,7 +17,7 @@
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
     ></script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=carousel-1"></script>
   </head>
   <body>
     <div class="container">
@@ -56,7 +56,39 @@
           <strong id="count">Chưa có tệp</strong
           ><button type="button" class="plain" id="clear">Xóa danh sách</button>
         </div>
-        <ul id="fileList" aria-label="Danh sách tệp"></ul>
+        <div id="fileCarousel" class="file-carousel" hidden>
+          <button
+            type="button"
+            class="carousel-arrow"
+            id="scrollLeft"
+            aria-label="Cuộn tệp sang trái"
+          >
+            ‹
+          </button>
+          <ul
+            id="fileList"
+            aria-label="Các tệp theo thứ tự từ trái sang phải"
+            tabindex="0"
+          ></ul>
+          <button
+            type="button"
+            class="carousel-arrow"
+            id="scrollRight"
+            aria-label="Cuộn tệp sang phải"
+          >
+            ›
+          </button>
+        </div>
+        <p id="queueHint" class="queue-hint" hidden>
+          Kéo thẻ sang trái/phải để đổi thứ tự. Trên điện thoại, kéo nút ⠿ để
+          sắp xếp hoặc vuốt hàng thẻ để xem thêm.
+        </p>
+        <span
+          id="queueAnnouncement"
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+        ></span>
         <div class="options" id="options"></div>
         <p class="note" id="note"></p>
         <div class="actions">

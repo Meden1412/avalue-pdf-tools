@@ -115,7 +115,7 @@ function setBusy(value) {
   busy = value;
   document
     .querySelectorAll(
-      "#tools button,#workspace input,#workspace select,#clear,.file-controls button",
+      "#tools button,#workspace input,#workspace select,#clear,.file-controls button,.file-remove",
     )
     .forEach((el) => (el.disabled = value));
   $("convert").disabled = value;
@@ -197,7 +197,7 @@ function selectTool(key) {
         ? "Mỗi trang sẽ chuyển thành ảnh: mất khả năng chọn chữ/liên kết. Tệp đã tối ưu có thể không nhỏ hơn; khi đó công cụ giữ tệp gốc."
         : key === "jpg"
           ? "Mỗi trang thành một ảnh. Có thể chọn khoảng trang; áp dụng cho từng tệp trong danh sách."
-          : "Dùng nút ↑ ↓ hoặc kéo thả để sắp xếp. Tệp mới sẽ được thêm vào cuối danh sách.";
+          : "Kéo các thẻ sang trái/phải hoặc dùng nút ← → để sắp xếp. Tệp mới sẽ được thêm vào cuối danh sách.";
   renderQueue();
 }
 for (const [key, cfg] of Object.entries(TOOLS)) {
@@ -208,63 +208,304 @@ for (const [key, cfg] of Object.entries(TOOLS)) {
   b.onclick = () => selectTool(key);
   $("tools").append(b);
 }
-function renderQueue() {
+const thumbnailCache = new WeakMap();
+let previewQueue = Promise.resolve();
+let draggedFile = null;
+let dragFrame = 0;
+let dragClientX = null;
+function thumbnail(file) {
+  if (!thumbnailCache.has(file)) {
+    const pending = previewQueue.then(async () => {
+      const canvas = document.createElement("canvas");
+      let pdf, image, objectURL;
+      try {
+        let detail;
+        if (/\.pdf$/i.test(file.name)) {
+          const lib = await pdfjs();
+          const task = lib.getDocument({
+            data: new Uint8Array(await file.arrayBuffer()),
+            isEvalSupported: false,
+          });
+          task.onPassword = () => {
+            void task.destroy().catch(() => {});
+          };
+          pdf = await task.promise;
+          const page = await pdf.getPage(1);
+          const original = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({
+            scale: Math.min(280 / original.width, 220 / original.height),
+          });
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await page.render({
+            canvasContext: canvas.getContext("2d"),
+            viewport,
+            background: "rgb(255,255,255)",
+          }).promise;
+          detail = `${pdf.numPages} trang PDF`;
+        } else {
+          objectURL = URL.createObjectURL(file);
+          image = new Image();
+          image.src = objectURL;
+          await image.decode();
+          const scale = Math.min(
+            280 / image.naturalWidth,
+            220 / image.naturalHeight,
+            1,
+          );
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas
+            .getContext("2d")
+            .drawImage(image, 0, 0, canvas.width, canvas.height);
+          detail = `${image.naturalWidth} × ${image.naturalHeight}`;
+        }
+        return { src: canvas.toDataURL("image/png"), detail };
+      } catch {
+        return { detail: "Không có ảnh xem trước" };
+      } finally {
+        if (pdf) await pdf.destroy();
+        if (objectURL) URL.revokeObjectURL(objectURL);
+        canvas.width = canvas.height = 0;
+      }
+    });
+    // Render one PDF at a time and reuse small thumbnails after reordering.
+    previewQueue = pending.catch(() => {});
+    thumbnailCache.set(file, pending);
+  }
+  return thumbnailCache.get(file);
+}
+function updateScrollButtons() {
   const list = $("fileList");
+  $("scrollLeft").disabled = list.scrollLeft <= 2;
+  $("scrollRight").disabled =
+    list.scrollLeft + list.clientWidth >= list.scrollWidth - 2;
+}
+$("fileList").addEventListener("scroll", updateScrollButtons);
+new ResizeObserver(updateScrollButtons).observe($("fileList"));
+for (const [id, direction] of [
+  ["scrollLeft", -1],
+  ["scrollRight", 1],
+]) {
+  $(id).onclick = () =>
+    $("fileList").scrollBy({
+      left: direction * Math.max(180, $("fileList").clientWidth * 0.75),
+      behavior: "smooth",
+    });
+}
+function autoScrollDrag() {
+  if (!draggedFile) return;
+  const list = $("fileList"),
+    rect = list.getBoundingClientRect();
+  if (dragClientX !== null) {
+    if (dragClientX < rect.left + 45) list.scrollLeft -= 10;
+    else if (dragClientX > rect.right - 45) list.scrollLeft += 10;
+  }
+  dragFrame = requestAnimationFrame(autoScrollDrag);
+}
+function finishDrag() {
+  const list = $("fileList");
+  list.onpointermove =
+    list.onpointerup =
+    list.onpointercancel =
+    list.onlostpointercapture =
+      null;
+  if (!draggedFile) return;
+  draggedFile = null;
+  dragClientX = null;
+  cancelAnimationFrame(dragFrame);
+  renderQueue();
+}
+function reorderFile(file, targetFile) {
+  if (busy || file === targetFile) return;
+  const from = files.indexOf(file),
+    to = files.indexOf(targetFile);
+  if (from < 0 || to < 0) return;
+  files.splice(to, 0, files.splice(from, 1)[0]);
+  clearResults();
+  $("queueAnnouncement").textContent =
+    `${file.name}: vị trí ${to + 1} trên ${files.length}.`;
+}
+function renderQueue() {
+  const list = $("fileList"),
+    scrollLeft = list.scrollLeft;
   list.replaceChildren();
   $("count").textContent = files.length
     ? `${files.length} tệp đã chọn`
     : "Chưa có tệp";
+  $("fileCarousel").hidden = !files.length;
+  $("queueHint").hidden = !files.length;
   files.forEach((file, i) => {
     const li = document.createElement("li");
+    li.className = "file-card";
+    li.queueFile = file;
     li.draggable = !busy;
+    li.setAttribute("aria-label", `Tệp ${i + 1}: ${file.name}`);
     const name = document.createElement("span");
     name.className = "file-name";
-    name.textContent = `${i + 1}. ${file.name}`;
+    name.textContent = file.name;
+    name.title = file.name;
+    const preview = document.createElement("div");
+    preview.className = "file-preview";
+    preview.textContent = /\.pdf$/i.test(file.name) ? "PDF" : "Ảnh";
+    const order = document.createElement("span");
+    order.className = "file-order";
+    order.textContent = i + 1;
+    const detail = document.createElement("span");
+    detail.className = "file-detail";
+    detail.textContent = "Đang tạo ảnh xem trước…";
     const size = document.createElement("span");
     size.className = "file-size";
     size.textContent = (file.size / 1024 / 1024).toFixed(2) + " MB";
     const controls = document.createElement("div");
     controls.className = "file-controls";
-    [
-      ["↑", -1, "Di chuyển lên"],
-      ["↓", 1, "Di chuyển xuống"],
+    for (const [text, delta, label] of [
+      ["←", -1, "Di chuyển sang trái"],
+      ["→", 1, "Di chuyển sang phải"],
       ["×", 0, "Bỏ tệp"],
-    ].forEach(([text, delta, label]) => {
+    ]) {
       const b = document.createElement("button");
+      b.type = "button";
       b.textContent = text;
       b.setAttribute("aria-label", `${label}: ${file.name}`);
+      b.title = label;
       b.disabled =
         busy ||
         (delta === -1 && i === 0) ||
         (delta === 1 && i === files.length - 1);
+      if (!delta) b.className = "file-remove";
       b.onclick = () => {
         if (busy) return;
-        if (delta) {
-          [files[i], files[i + delta]] = [files[i + delta], files[i]];
-        } else files.splice(i, 1);
-        clearResults();
+        const position = files.indexOf(file);
+        if (delta) reorderFile(file, files[position + delta]);
+        else {
+          files.splice(position, 1);
+          clearResults();
+        }
         renderQueue();
+        if (delta) {
+          const moved = [...list.children].find(
+            (card) => card.queueFile === file,
+          );
+          moved.scrollIntoView({ block: "nearest", inline: "nearest" });
+          moved
+            .querySelector(`button[title="${label}"]`)
+            ?.focus({ preventScroll: true });
+        }
       };
-      controls.append(b);
-    });
-    li.append(name, size, controls);
-    li.ondragstart = (e) => e.dataTransfer.setData("text/plain", String(i));
-    li.ondragover = (e) => e.preventDefault();
+      if (delta) controls.append(b);
+      else li.append(b);
+    }
+    const handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "drag-handle";
+    handle.textContent = "⠿";
+    handle.title = "Kéo để sắp xếp";
+    handle.setAttribute(
+      "aria-label",
+      `Kéo sắp xếp: ${file.name}. Dùng phím mũi tên trái/phải để đổi vị trí.`,
+    );
+    handle.disabled = busy;
+    handle.onkeydown = (e) => {
+      if (busy || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      e.preventDefault();
+      const position = files.indexOf(file),
+        next = position + (e.key === "ArrowLeft" ? -1 : 1);
+      if (next < 0 || next >= files.length) return;
+      reorderFile(file, files[next]);
+      renderQueue();
+      const moved = [...list.children].find((card) => card.queueFile === file);
+      moved.querySelector(".drag-handle").focus({ preventScroll: true });
+      moved.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+    handle.onpointerdown = (e) => {
+      if (busy || e.button !== 0) return;
+      e.preventDefault();
+      li.draggable = false;
+      list.onpointermove = handle.onpointermove;
+      list.onpointerup =
+        list.onpointercancel =
+        list.onlostpointercapture =
+          finishDrag;
+      list.setPointerCapture(e.pointerId);
+      draggedFile = file;
+      li.classList.add("dragging");
+      dragClientX = e.clientX;
+      autoScrollDrag();
+    };
+    handle.onpointermove = (e) => {
+      if (draggedFile !== file || !list.hasPointerCapture(e.pointerId)) return;
+      dragClientX = e.clientX;
+      const target = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest(".file-card");
+      if (!target || target === li || target.parentElement !== list) return;
+      const from = files.indexOf(file),
+        to = files.indexOf(target.queueFile);
+      const rect = target.getBoundingClientRect();
+      if (
+        (from < to && e.clientX < rect.left + rect.width / 2) ||
+        (from > to && e.clientX > rect.left + rect.width / 2)
+      )
+        return;
+      reorderFile(file, target.queueFile);
+      list.insertBefore(li, from < to ? target.nextSibling : target);
+      [...list.children].forEach((card, index) => {
+        card.querySelector(".file-order").textContent = index + 1;
+      });
+    };
+
+    controls.insertBefore(handle, controls.lastChild);
+    li.append(name, preview, order, detail, size, controls);
+    li.ondragstart = (e) => {
+      if (busy || e.target.closest("button")) {
+        e.preventDefault();
+        return;
+      }
+      draggedFile = file;
+      dragClientX = e.clientX;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", file.name);
+      li.classList.add("dragging");
+      autoScrollDrag();
+    };
+    li.ondragover = (e) => {
+      if (!draggedFile || busy) return;
+      e.preventDefault();
+      dragClientX = e.clientX;
+      e.dataTransfer.dropEffect = "move";
+      li.classList.add("drop-target");
+    };
+    li.ondragleave = () => li.classList.remove("drop-target");
     li.ondrop = (e) => {
+      if (!draggedFile || busy) return;
       e.preventDefault();
       e.stopPropagation();
-      if (busy) return;
-      const value = e.dataTransfer.getData("text/plain");
-      if (!/^\d+$/.test(value)) return;
-      const from = Number(value);
-      if (from >= files.length) return;
-      files.splice(i, 0, files.splice(from, 1)[0]);
-      clearResults();
-      renderQueue();
+      reorderFile(draggedFile, file);
+      finishDrag();
     };
+    li.ondragend = finishDrag;
     list.append(li);
+    thumbnail(file)
+      .then((data) => {
+        if (!li.isConnected) return;
+        detail.textContent = data.detail;
+        if (data.src) {
+          const img = document.createElement("img");
+          img.src = data.src;
+          img.alt = `Xem trước ${file.name}`;
+          img.draggable = false;
+          preview.replaceChildren(img);
+        }
+      })
+      .catch(() => {
+        if (li.isConnected) detail.textContent = "Không có ảnh xem trước";
+      });
   });
+  list.scrollLeft = scrollLeft;
+  requestAnimationFrame(updateScrollButtons);
 }
+
 function addFiles(incoming) {
   if (busy) return;
   const errors = [];
